@@ -42,6 +42,10 @@ typedef NS_ENUM(NSUInteger, MCLogLevel) {
     MCLogLevelError
 };
 
+typedef NS_ENUM(NSUInteger, MCLogFilterType) {
+    MCLogFilterTypeIgnoreWords = 0x1004,
+};
+
 
 /////////////////////////////////////////////////////////////////////////////////////
 @interface MCOrderedMap : NSObject
@@ -306,12 +310,14 @@ static IMP OriginalClearTextIMP = nil;
     
     NSInteger filterMode = [[self valueForKey:@"filterMode"] intValue];
     BOOL shouldShowLogLevel = YES;
-    if (filterMode >= MCLogLevelVerbose) {
+    if (filterMode >= MCLogLevelVerbose && filterMode < MCLogFilterTypeIgnoreWords) {
         shouldShowLogLevel = [obj logLevel] >= filterMode
         || [[obj valueForKey:@"input"] boolValue]
         || [[obj valueForKey:@"prompt"] boolValue]
         || [[obj valueForKey:@"outputRequestedByUser"] boolValue]
         || [[obj valueForKey:@"adaptorType"] hasSuffix:@".Debugger"];
+    } else if(filterMode >= MCLogFilterTypeIgnoreWords) {
+        shouldShowLogLevel = YES;
     } else {
         shouldShowLogLevel = [OriginalShouldAppendItem(self, _cmd, obj) boolValue];
     }
@@ -353,7 +359,14 @@ static IMP OriginalClearTextIMP = nil;
     NSError *error;
     NSRegularExpression *regex = SearchPatternsDic[hash(self)];
     if (regex == nil || ![regex.pattern isEqualToString:searchField.stringValue]) {
-        regex = [NSRegularExpression regularExpressionWithPattern:searchField.stringValue
+        NSString* pattern;
+        if( filterMode == MCLogFilterTypeIgnoreWords ) {
+            NSArray* words = [searchField.stringValue componentsSeparatedByString:@","];
+            pattern = [self getIgnoreWordsPatternFromWords:words];
+        } else {
+            pattern = searchField.stringValue;
+        }
+        regex = [NSRegularExpression regularExpressionWithPattern:pattern
                                                   options:(NSRegularExpressionCaseInsensitive|NSRegularExpressionDotMatchesLineSeparators)
                                                     error:&error];
         if (regex == nil) {
@@ -382,6 +395,22 @@ static IMP OriginalClearTextIMP = nil;
 	OriginalClearTextIMP(self, _cmd);
 	[OriginConsoleItemsMap removeObjectForKey:hash(self)];
 }
+
+- (NSString*)getIgnoreWordsPatternFromWords:(NSArray*)words {
+    NSMutableString* pattern = [NSMutableString string];
+    [pattern appendString:@"^(?!("];
+    [words enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+        NSString* word = obj;
+        [pattern appendFormat:@"(.*%@)", word];
+        if( idx + 1 != words.count) {
+            [pattern appendString:@"|"];
+        }
+    }];
+    [pattern appendString:@")).+$"];
+    
+    return pattern;
+}
+
 @end
 
 
@@ -766,6 +795,7 @@ static const void *kTimerKey;
         [self filterPopupButton:filterButton addItemWithTitle:@"Info" tag:MCLogLevelInfo];
         [self filterPopupButton:filterButton addItemWithTitle:@"Warn" tag:MCLogLevelWarn];
         [self filterPopupButton:filterButton addItemWithTitle:@"Error" tag:MCLogLevelError];
+        [self filterPopupButton:filterButton addItemWithTitle:@"IgnoreWords" tag:MCLogFilterTypeIgnoreWords];
     }
     
     NSInteger selectedItem = [filterButton indexOfItemWithTag:[[consoleTextView valueForKey:@"logMode"] intValue]];
@@ -778,8 +808,8 @@ static const void *kTimerKey;
     }
     
     NSRect frame = button.frame;
-    frame.origin.x -= button.frame.size.width + 205;
-    frame.size.width = 200.0;
+    frame.origin.x -= button.frame.size.width + 405;
+    frame.size.width = 400.0;
     frame.size.height -= 2;
     
     NSSearchField *searchField = [[NSSearchField alloc] initWithFrame:frame];
