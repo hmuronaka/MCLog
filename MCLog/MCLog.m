@@ -34,6 +34,7 @@ void hookIDEConsoleItem();
 NSRegularExpression* logItemPrefixPattern();
 NSRegularExpression* escCharPattern();
 NSString* getIgnoreWordsPatternFromWords(NSArray* words);
+NSString* getWordsPatternFromWords(NSArray* words);
 
 
 typedef NS_ENUM(NSUInteger, MCLogLevel) {
@@ -45,6 +46,7 @@ typedef NS_ENUM(NSUInteger, MCLogLevel) {
 
 typedef NS_ENUM(NSUInteger, MCLogFilterType) {
     MCLogFilterTypeIgnoreWords = 0x1004,
+    MCLogFilterTypeWords
 };
 
 
@@ -365,6 +367,9 @@ static IMP OriginalClearTextIMP = nil;
         if( filterMode == MCLogFilterTypeIgnoreWords ) {
             NSArray* words = [searchField.stringValue componentsSeparatedByString:@","];
             pattern = getIgnoreWordsPatternFromWords(words);
+        } else if( filterMode == MCLogFilterTypeWords ) {
+           NSArray* words = [searchField.stringValue componentsSeparatedByString:@","];
+            pattern = getWordsPatternFromWords(words);
         } else {
             pattern = searchField.stringValue;
         }
@@ -783,6 +788,7 @@ static const void * kTimerKey;
         [self filterPopupButton:filterButton addItemWithTitle:@"Warn" tag:MCLogLevelWarn];
         [self filterPopupButton:filterButton addItemWithTitle:@"Error" tag:MCLogLevelError];
         [self filterPopupButton:filterButton addItemWithTitle:@"IgnoreWords" tag:MCLogFilterTypeIgnoreWords];
+        [self filterPopupButton:filterButton addItemWithTitle:@"Words" tag:MCLogFilterTypeWords];
     }
     
     NSInteger selectedItem = [filterButton indexOfItemWithTag:[[consoleTextView valueForKey:@"logMode"] intValue]];
@@ -997,6 +1003,21 @@ NSString* getIgnoreWordsPatternFromWords(NSArray* words) {
          }
      }];
     [pattern appendString:@")).+$"];
+    
+    return pattern;
+}
+
+NSString* getWordsPatternFromWords(NSArray* words) {
+    NSMutableString* pattern = [NSMutableString string];
+    [pattern appendString:@"^("];
+    [words enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL * stop) {
+         NSString* word = obj;
+         [pattern appendFormat:@"(.*%@)", word];
+         if( idx + 1 != words.count) {
+             [pattern appendString:@"|"];
+         }
+     }];
+    [pattern appendString:@").+$"];
     
     return pattern;
 }
